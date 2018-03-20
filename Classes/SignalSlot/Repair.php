@@ -1,10 +1,10 @@
 <?php
-namespace StefanFroemken\RepairTranslation\SignalSlot;
+namespace ISCOPE\RepairTranslation\SignalSlot;
 
 /***************************************************************
  *  Copyright notice
  *
- *  (c) 2016 Stefan Froemken <froemken@gmail.com>
+ *  (c) 2018 Kai Sickbert <ksickbert@iscope.de>
  *
  *  All rights reserved
  *
@@ -24,7 +24,10 @@ namespace StefanFroemken\RepairTranslation\SignalSlot;
  *
  *  This copyright notice MUST APPEAR in all copies of the script!
  ***************************************************************/
+use Doctrine\Common\Proxy\Exception\UnexpectedValueException;
 use TYPO3\CMS\Backend\Utility\BackendUtility;
+use TYPO3\CMS\Core\Exception;
+use TYPO3\CMS\Core\Resource\Exception\InvalidConfigurationException;
 use TYPO3\CMS\Extbase\DomainObject\DomainObjectInterface;
 use TYPO3\CMS\Extbase\Persistence\Generic\Qom\Comparison;
 use TYPO3\CMS\Extbase\Persistence\Generic\Qom\ConstraintInterface;
@@ -57,10 +60,19 @@ class Repair
     protected $dataMapper;
 
     /**
-     * @var \StefanFroemken\RepairTranslation\Parser\QueryParser
+     * @var \ISCOPE\RepairTranslation\Parser\QueryParser
      * @inject
      */
     protected $queryParser;
+
+    /**
+     * Array of relation table names which should be fixed
+     *
+     * @var array
+     */
+    protected $tables = [
+        // can be filled by tablenames which should be fixed
+    ];
 
     /**
      * Modify sys_file_reference language
@@ -70,23 +82,26 @@ class Repair
      *
      * @return array
      */
-    public function modifySysFileReferenceLanguage(QueryInterface $query, array $result)
+    public function modifyRecordLanguages(QueryInterface $query, array $result)
     {
-        if ($this->isSysFileReferenceTable($query)) {
-            $origTranslatedReferences = $this->reduceResultToTranslatedRecords($result);
-            $newTranslatedReferences = $this->getNewlyCreatedTranslatedSysFileReferences($query);
+        if ($table = $this->isInTableArray($query)) {
+//            $origTranslatedReferences = $this->reduceResultToTranslatedRecords($result);
+            $newTranslatedRecords = $this->getNewlyCreatedTranslatedRecords($query, $table);
 
-            $record = current($result);
-            if (
-                is_array($record) &&
-                isset($GLOBALS['TCA'][$record['tablenames']]['columns'][$record['fieldname']]['l10n_mode']) &&
-                $GLOBALS['TCA'][$record['tablenames']]['columns'][$record['fieldname']]['l10n_mode'] === 'mergeIfNotBlank'
-            ) {
-                // if translation is empty, but mergeIfNotBlank is set, than use the image from default language
-                // keep $result as it is
-            } else {
-                // merge with the translated image. If translation is empty $result will be empty, too
-                $result = array_merge($origTranslatedReferences, $newTranslatedReferences);
+            if(!empty($newTranslatedRecords))
+            {
+                $record = current($result);
+                if (
+                    is_array($record) &&
+                    isset($GLOBALS['TCA'][$record['tablenames']]['columns'][$record['fieldname']]['l10n_mode']) &&
+                    $GLOBALS['TCA'][$record['tablenames']]['columns'][$record['fieldname']]['l10n_mode'] === 'mergeIfNotBlank'
+                ) {
+                    // if translation is empty, but mergeIfNotBlank is set, than use the image from default language
+                    // keep $result as it is
+                } else {
+                    // merge with the translated image. If translation is empty $result will be empty, too
+                    $result = $newTranslatedRecords;
+                }
             }
         }
 
@@ -118,13 +133,13 @@ class Repair
     }
 
     /**
-     * Check for sys_file_reference table
+     * Check for table array
      *
      * @param QueryInterface $query
      *
      * @return bool
      */
-    protected function isSysFileReferenceTable(QueryInterface $query)
+    protected function isInTableArray(QueryInterface $query)
     {
         $source = $query->getSource();
         if ($source instanceof SelectorInterface) {
@@ -135,56 +150,126 @@ class Repair
             $tableName = '';
         }
 
-        return $tableName === 'sys_file_reference';
+        return in_array($tableName, $this->tables) ? $tableName : false;
     }
 
     /**
-     * Get newly created translated sys_file_references,
+     * Get newly created translated records,
      * which do not have a relation to the default language
      * This will happen, if you translate a record, delete the sys_file_record and create a new one
      *
      * @param QueryInterface $query
-     *
+     * @param string $table
      * @return array
      */
-    protected function getNewlyCreatedTranslatedSysFileReferences(QueryInterface $query)
+    protected function getNewlyCreatedTranslatedRecords(QueryInterface $query, string $table)
     {
-        // Find references which do not have a relation to default language
-        $where = array(
-            0 => 'sys_file_reference.l10n_parent = 0'
-        );
+        $where = array();
         // add where statements. uid_foreign=UID of translated parent record
-        $this->queryParser->parseConstraint($query->getConstraint(), $where);
+
+        $mm_table = $this->queryParser->parseSource($query, $where);
 
         if ($this->environmentService->isEnvironmentInFrontendMode()) {
-            $where[] = ' 1=1 ' . $this->getPageRepository()->enableFields('sys_file_reference');
+            $where[] = ' 1=1 ' . $this->getPageRepository()->enableFields($table);
         } else {
             $where[] = sprintf(
                 ' 1=1 %s %s',
-                BackendUtility::BEenableFields('sys_file_reference'),
-                BackendUtility::deleteClause('sys_file_reference')
+                BackendUtility::BEenableFields($table),
+                BackendUtility::deleteClause($table)
             );
         }
-        $rows = $this->getDatabaseConnection()->exec_SELECTgetRows(
-            '*',
-            'sys_file_reference',
-            implode(' AND ', $where),
-            '',
-            'sorting_foreign ASC'
-        );
+
+        if(!$mm_table)
+        {
+            /* return empty if not mm_relation */
+            $rows = $this->getTranslatedRecords($where, $table);
+        }
+        else {
+            $rows = $this->getTranslatedMMRecords($where, $table, $mm_table);
+        }
+
         if (empty($rows)) {
             $rows = array();
         }
 
         foreach ($rows as $key => &$row) {
-            BackendUtility::workspaceOL('sys_file_reference', $row);
+            BackendUtility::workspaceOL($table, $row);
             // t3ver_state=2 indicates that the live element must be deleted upon swapping the versions.
             if ((int)$row['t3ver_state'] === 2) {
                 unset($rows[$key]);
             }
         }
+        return $rows;
+    }
+
+    /**
+     * get translated Records over mm_table
+     *
+     * @param array $where
+     * @param string $table
+     * @param string $mm_table
+     *
+     * @return array
+     */
+    protected function getTranslatedMMRecords($where, string $table, string $mm_table)
+    {
+        /* get related records */
+        $rows = $this->getDatabaseConnection()->exec_SELECT_mm_query('*',
+            '',
+            $mm_table,
+            $table,
+            'AND ' . implode(' AND', $where),
+            '',
+            ''
+        );
+
+        /* get language overlay for related records */
+        $results = array();
+        while($row = $rows->fetch_assoc())
+        {
+            $results[] = $this->getPageRepository()->getRecordOverlay($table, $row, $this->getSysLanguage());
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param array  $where
+     * @param string $table
+     *
+     * @return array|null
+     */
+    protected function getTranslatedRecords(array $where, string $table)
+    {
+        $rows = $this->getDatabaseConnection()->exec_SELECTgetRows(
+            '*',
+            $table,
+            implode(' AND ', $where),
+            '',
+            'sorting_foreign ASC'
+        );
 
         return $rows;
+    }
+
+    /**
+     * Merges array with translation records with fallback if something isn't translated
+     *
+     * @param $oldRecords
+     * @param $newRecords
+     */
+    protected function mergeUntranslatedRecords($oldRecords, &$newRecords)
+    {
+        foreach ($newRecords as $newRecord)
+        {
+            foreach ($oldRecords as $oldRecord)
+            {
+                if($newRecord['l10n_parent'] != $oldRecord['uid'])
+                {
+                    $newRecords[] = $oldRecord;
+                }
+            }
+        }
     }
 
     /**
@@ -212,5 +297,10 @@ class Repair
     protected function getDatabaseConnection()
     {
         return $GLOBALS['TYPO3_DB'];
+    }
+
+    protected function getSysLanguage()
+    {
+        return $GLOBALS['TSFE']->sys_language_uid;
     }
 }

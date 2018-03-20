@@ -11,23 +11,23 @@
  ***************************************************************/
 
 $EM_CONF[$_EXTKEY] = array(
-    'title' => 'Repair file translation',
-    'description' => 'Get rid of displaying the default file in translated records',
+    'title' => 'Repair object translations for given Tables',
+    'description' => 'Get rid of displaying the default object in translated records, fork of repair_translation',
     'category' => 'service',
-    'author' => 'Stefan Froemken',
-    'author_email' => 'froemken@gmail.com',
-    'author_company' => '',
+    'author' => 'Kai Sickbert',
+    'author_email' => 'ksickbert@iscope.com',
+    'author_company' => 'ISCOPE GmbH',
     'shy' => '',
     'priority' => '',
     'module' => '',
-    'state' => 'stable',
+    'state' => 'beta',
     'internal' => '',
     'uploadfolder' => '0',
     'createDirs' => '',
     'modify_tables' => '',
     'clearCacheOnLoad' => 0,
     'lockType' => '',
-    'version' => '1.1.0',
+    'version' => '0.1.0',
     'constraints' => array(
         'depends' => array(
             'typo3' => '6.2.14-8.99.99',

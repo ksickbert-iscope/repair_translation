@@ -8,6 +8,6 @@ $signalSlotDispatcher = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance('TY
 $signalSlotDispatcher->connect(
     'TYPO3\\CMS\\Extbase\\Persistence\\Generic\\Backend',
     'afterGettingObjectData',
-    'StefanFroemken\\RepairTranslation\\SignalSlot\\Repair',
-    'modifySysFileReferenceLanguage'
+    'ISCOPE\\RepairTranslation\\SignalSlot\\Repair',
+    'modifyRecordLanguages'
 );
