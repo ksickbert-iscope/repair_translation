@@ -58,6 +58,7 @@ class QueryParser
      *
      * @param Qom\JoinInterface $source The source
      * @param Qom\ConstraintInterface $constraint The constraint
+     * @param array $where
      *
      * @return void
      */
@@ -123,14 +124,14 @@ class QueryParser
      *
      * @return string
      */
-    protected function getValue($operand)
+    public function getValue($operand)
     {
         if ($operand instanceof AbstractDomainObject) {
             $value = (string)(int)$operand->_getProperty('_localizedUid');
         } elseif (MathUtility::canBeInterpretedAsInteger($operand)) {
             $value = (string)$operand;
         } else {
-            $value = $this->getDatabaseConnection()->fullQuoteStr($operand, 'tx_agrirouter_domain_model_category');
+            $value = $this->getDatabaseConnection()->fullQuoteStr($operand, NULL);
         }
         return $value;
     }

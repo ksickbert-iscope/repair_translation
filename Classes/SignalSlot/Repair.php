@@ -71,11 +71,11 @@ class Repair
      * @var array
      */
     protected $tables = [
-        // can be filled by tablenames which should be fixed
+        'sys_file_reference'
     ];
 
     /**
-     * Modify sys_file_reference language
+     * Modify records of given tables language
      *
      * @param \TYPO3\CMS\Extbase\Persistence\QueryInterface $query
      * @param array $result
@@ -85,11 +85,9 @@ class Repair
     public function modifyRecordLanguages(QueryInterface $query, array $result)
     {
         if ($table = $this->isInTableArray($query)) {
-//            $origTranslatedReferences = $this->reduceResultToTranslatedRecords($result);
+            $origTranslatedRecords = $this->reduceResultToTranslatedRecords($result);
             $newTranslatedRecords = $this->getNewlyCreatedTranslatedRecords($query, $table);
 
-            if(!empty($newTranslatedRecords))
-            {
                 $record = current($result);
                 if (
                     is_array($record) &&
@@ -98,12 +96,16 @@ class Repair
                 ) {
                     // if translation is empty, but mergeIfNotBlank is set, than use the image from default language
                     // keep $result as it is
-                } else {
+                } else
+                {
                     // merge with the translated image. If translation is empty $result will be empty, too
-                    $result = $newTranslatedRecords;
+                    if($table == 'sys_file_reference')
+                        $result = array_merge($origTranslatedRecords, $newTranslatedRecords);
+                    else if(!empty($newTranslatedRecords))
+                        $result = $newTranslatedRecords;
                 }
-            }
         }
+
 
         return array(
             0 => $query,
@@ -112,16 +114,16 @@ class Repair
     }
 
     /**
-     * Reduce sysFileReference array to translated records
+     * Reduce records array to translated records
      *
-     * @param array $sysFileReferenceRecords
+     * @param array $records
      *
      * @return array
      */
-    protected function reduceResultToTranslatedRecords(array $sysFileReferenceRecords)
+    protected function reduceResultToTranslatedRecords(array $records)
     {
         $translatedRecords = array();
-        foreach ($sysFileReferenceRecords as $key => $record) {
+        foreach ($records as $key => $record) {
             if (isset($record['_LOCALIZED_UID'])) {
                 // The image reference in translated parent record was not manually deleted.
                 // So, l10n_parent is filled and we have a valid translated sys_file_reference record here
