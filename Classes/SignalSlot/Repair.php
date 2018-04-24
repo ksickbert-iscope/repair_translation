@@ -169,6 +169,14 @@ class Repair
         $where = array();
         // add where statements. uid_foreign=UID of translated parent record
 
+        if($table == 'sys_file_reference')
+        {
+            // Find references which do not have a relation to default language
+            $where = array(
+                0 => 'sys_file_reference.l10n_parent = 0'
+            );
+        }
+
         $mm_table = $this->queryParser->parseSource($query, $where);
 
         if ($this->environmentService->isEnvironmentInFrontendMode()) {
